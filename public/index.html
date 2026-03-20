@@ -3,137 +3,432 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modern ToDo | Node.js</title>
+    <title>Secure ToDo | JWT Auth</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; }
-        .card { border: none; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .list-group-item { border: none; border-bottom: 1px solid #eee; transition: 0.3s; }
-        .list-group-item:hover { background-color: #f8f9fa; }
-        .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; }
-        .btn-delete:hover { color: #a71d2a; }
+
+:root {
+    --bg-color: #f8f9fa;
+    --card-bg: #ffffff;
+    --text-color: #212529;
+}
+
+/* To musi być w Twoim CSS */
+[data-theme="dark"] {
+    --bg-color: #121212;
+    --card-bg: #1e1e1e;
+    --text-color: #f8f9fa;
+}
+
+/* Upewnij się, że elementy używają tych zmiennych! */
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+.card, .list-group-item {
+    background-color: var(--card-bg) !important;
+    color: var(--text-color) !important;
+}
+
+        body { background: #f0f2f5; min-height: 100vh; }
+        .hidden { display: none !important; }
+        .card { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .text-decoration-line-through { color: #adb5bd; }
+
+        @keyframes pulse-gray {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(108, 117, 125, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 117, 125, 0); }
+}
+
+.btn-pulse {
+    animation: pulse-gray 2s infinite;
+    opacity: 0.6;
+}
+
     </style>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
 </head>
 <body>
 
 <div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
+    <div id="authSection" class="row justify-content-center">
+        <div class="col-md-4">
             <div class="card p-4">
-                <h2 class="text-center mb-4 text-primary"><i class="fas fa-tasks"></i> Moje Zadania</h2>
-                
-                <div class="input-group mb-3">
-                    <input type="text" id="taskInput" class="form-control" placeholder="Co masz do zrobienia?" aria-label="Zadanie">
-                    <button class="btn btn-primary" onclick="addTask()">
-                        <i class="fas fa-plus"></i> Dodaj
-                    </button>
-                </div>
-
-                <div class="d-flex justify-content-center gap-2 mb-3">
-                    <button class="btn btn-outline-secondary btn-sm" onclick="setFilter('all')">Wszystkie</button>
-                    <button class="btn btn-outline-success btn-sm" onclick="setFilter('completed')">Ukończone</button>
-                    <button class="btn btn-outline-warning btn-sm" onclick="setFilter('active')">Do zrobienia</button>
-                </div>
-
-                <ul id="taskList" class="list-group list-group-flush">
-                    </ul>
+                <h3 class="text-center mb-4" id="authTitle">Zaloguj się</h3>
+                <input type="text" id="username" class="form-control mb-2" placeholder="Login">
+                <input type="password" id="password" class="form-control mb-3" placeholder="Hasło">
+                <button class="btn btn-primary w-100 mb-2" onclick="handleAuth('login')">Zaloguj</button>
+                <button class="btn btn-outline-secondary w-100 btn-sm" onclick="handleAuth('register')">Stwórz konto</button>
+                <div id="authError" class="text-danger mt-2 small text-center"></div>
             </div>
+        </div>
+    </div>
+
+    <div id="todoSection" class="row justify-content-center hidden">
+        <div class="col-md-6">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="text-primary m-0">Twoje Zadania</h2>
+
+                <div class="text-end mb-3">
+<button id="themeToggle" class="btn btn-sm btn-outline-secondary" onclick="toggleDarkMode()">
+    <i class="fas fa-moon"></i> Tryb Ciemny
+</button>
+</div>
+
+                <button class="btn btn-sm btn-danger" onclick="logout()">Wyloguj <i class="fas fa-sign-out-alt"></i></button>
+            </div>
+            
+<div class="input-group mb-3">
+    <input type="text" id="taskInput" class="form-control" placeholder="Co dziś robimy?">
+    <select id="priorityInput" class="form-select" style="max-width: 130px;">
+        <option value="low">Niski</option>
+        <option value="medium">Średni</option>
+        <option value="high">Wysoki</option>
+    </select>
+    <button class="btn btn-success" onclick="addTask()"><i class="fas fa-plus"></i></button>
+</div>
+
+<div id="statsSection" class="mb-3 animate__animated animate__fadeIn">
+    <div class="d-flex justify-content-between mb-1">
+        <span id="taskCounter" class="badge bg-primary px-3 py-2">Pozostało: 0 z 0</span>
+        <span id="percentCounter" class="fw-bold text-primary">0%</span>
+    </div>
+    <div class="progress" style="height: 10px; border-radius: 5px;">
+        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+             role="progressbar" style="width: 0%"></div>
+    </div>
+</div>
+
+
+            <ul id="taskList" class="list-group card overflow-hidden"></ul>
         </div>
     </div>
 </div>
 
 <script>
-// 1. Zaktualizowana funkcja wyświetlania (dodajemy styl i zdarzenie kliknięcia)
+    const API_URL = ''; // Zostaw puste, jeśli frontend i backend są na tym samym serwerze
+
+    // Główna funkcja sprawdzająca czy jesteśmy zalogowani
+    function checkLogin() {
+        const token = localStorage.getItem('token');
+        if (token) {
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('todoSection').classList.remove('hidden');
+            fetchTasks();
+        } else {
+            document.getElementById('authSection').classList.remove('hidden');
+            document.getElementById('todoSection').classList.add('hidden');
+        }
+    }
+
+    // Obsługa Logowania i Rejestracji
+    async function handleAuth(type) {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const errorDiv = document.getElementById('authError');
+
+        try {
+            const res = await fetch(`/auth/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+
+            if (!res.ok) throw new Error(data.error || 'Błąd autoryzacji');
+
+            if (type === 'login') {
+                localStorage.setItem('token', data.token);
+                checkLogin();
+            } else {
+                alert('Konto stworzone! Możesz się zalogować.');
+            }
+        } catch (err) {
+            errorDiv.innerText = err.message;
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        checkLogin();
+    }
+
+    // Pobieranie zadań z tokenem JWT w nagłówku
 async function fetchTasks() {
-    const res = await fetch('/tasks');
+    const token = localStorage.getItem('token');
+    const res = await fetch('/tasks', {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (res.status === 401) return logout(); 
+
     const tasks = await res.json();
     const list = document.getElementById('taskList');
-    list.innerHTML = '';
+    if (!list) return; // Bezpiecznik, jeśli elementu nie ma na stronie
     
-    tasks.forEach(task => {
+    list.innerHTML = '';
+
+    // 1. Generowanie elementów listy
+    tasks.forEach((task, index) => {
         const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
         
-        // Jeśli ukończone, dodajemy klasę 'text-decoration-line-through' (z Bootstrapa)
-        const titleClass = task.completed ? 'text-decoration-line-through text-muted' : '';
+        let priorityColor = 'border-info';
+        if (task.priority === 'high') priorityColor = 'border-danger';
+        else if (task.priority === 'medium') priorityColor = 'border-warning';
+
+        li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${priorityColor} animate__animated animate__fadeInUp`;
+        li.style.animationDelay = `${index * 0.1}s`;
+
+        // KLUCZOWE: Sprawdzamy, czy zadanie jest ukończone (obsługa różnych typów danych)
+        const isCompleted = task.completed === true || task.completed === 'true';
+        const titleClass = isCompleted ? 'text-decoration-line-through text-muted' : 'fw-bold';
         
         li.innerHTML = `
-            <span class="${titleClass}" style="cursor: pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
+            <span class="${titleClass}" style="cursor:pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
                 ${task.title}
             </span>
-            <button class="btn-delete" onclick="deleteTask('${task._id}')">
-                <i class="fas fa-trash-alt"></i>
-            </button>
+            <span class="badge rounded-pill bg-light text-dark border me-2 small">${task.priority}</span>
+            <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
         `;
         list.appendChild(li);
     });
-}
 
-// 2. Nowa funkcja wywołująca API
+    // --- 2. POPRAWIONA LOGIKA LICZNIKA I PASKA ---
+    const total = tasks.length;
+    // Liczymy tylko te, które faktycznie są true
+    const completed = tasks.filter(t => t.completed === true || t.completed === 'true').length;
+    const remaining = total - completed;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const taskCounter = document.getElementById('taskCounter');
+    const progressBar = document.getElementById('progressBar');
+    const percentText = document.getElementById('percentCounter');
+
+    // Aktualizacja tekstu (Pozostało: X z Y)
+    if (taskCounter) {
+        if (total === 0) {
+            taskCounter.innerText = "Brak zadań";
+        } else if (remaining === 0) {
+            taskCounter.innerText = "🎉 Wszystko gotowe!";
+        } else {
+            taskCounter.innerText = `Pozostało: ${remaining} z ${total}`;
+        }
+    }
+
+    // Aktualizacja paska postępu
+    if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+        if (percentText) percentText.innerText = `${percent}%`;
+
+        // Zmiana koloru paska przy 100%
+        if (percent === 100 && total > 0) {
+            progressBar.classList.remove('bg-success');
+            progressBar.classList.add('bg-warning'); // Złoty kolor sukcesu
+        } else {
+            progressBar.classList.remove('bg-warning');
+            progressBar.classList.add('bg-success'); // Standardowy zielony
+        }
+    }
+}
 async function toggleTask(id) {
-    await fetch(`/tasks/${id}/toggle`, { method: 'PATCH' });
-    fetchTasks(); // Odśwież listę
+    const token = localStorage.getItem('token');
+    
+    try {
+        const res = await fetch(`/tasks/${id}/toggle`, {
+            method: 'PATCH',
+            headers: { 
+                'Authorization': `Bearer ${token}` 
+            }
+        });
+
+        if (res.ok) {
+            // KLUCZOWE: Po zmianie w bazie, pobieramy listę od nowa,
+            // aby funkcja fetchTasks przeliczyła licznik!
+            fetchTasks(); 
+        }
+    } catch (err) {
+        console.error("Błąd podczas przełączania zadania:", err);
+    }
 }
 
-    async function addTask() {
-        const input = document.getElementById('taskInput');
-        if (!input.value.trim()) return; // Nie dodawaj pustych
+async function addTask() {
+    const input = document.getElementById('taskInput');
+    const title = input.value.trim();
 
-        await fetch('/tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: input.value })
-        });
+    // Blokada przed wysłaniem pustego tekstu
+    if (title === "") {
+        alert("Wpisz treść zadania!");
+        return; 
+    }
+
+    const priorityInput = document.getElementById('priorityInput');
+    const token = localStorage.getItem('token');
+
+    const res = await fetch('/tasks', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+            title: title, // Używamy już "wyczyszczonego" z białych znaków tytułu
+            priority: priorityInput.value 
+        })
+    });
+
+    if (res.ok) {
         input.value = '';
+        input.dispatchEvent(new Event('input')); // Przywraca pulsowanie
         fetchTasks();
     }
+}
 
     async function deleteTask(id) {
-        await fetch(`/tasks/${id}`, { method: 'DELETE' });
+        const token = localStorage.getItem('token');
+        await fetch(`/tasks/${id}`, { 
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         fetchTasks();
     }
 
-    fetchTasks();
-
-    let currentFilter = 'all'; // Domyślnie pokazujemy wszystko
-
-// Funkcja zmieniająca filtr i odświeżająca widok
-function setFilter(filter) {
-    currentFilter = filter;
-    fetchTasks();
-}
-
-async function fetchTasks() {
-    const res = await fetch('/tasks');
-    let tasks = await res.json();
-    const list = document.getElementById('taskList');
-    list.innerHTML = '';
-
-    // Logika filtrowania tablicy zadań
-    if (currentFilter === 'completed') {
-        tasks = tasks.filter(t => t.completed === true);
-    } else if (currentFilter === 'active') {
-        tasks = tasks.filter(t => t.completed === false);
-    }
+    checkLogin();
 
     tasks.forEach(task => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-        
-        const titleClass = task.completed ? 'text-decoration-line-through text-muted' : '';
-        
-        li.innerHTML = `
-            <span class="${titleClass}" style="cursor: pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
-                ${task.title}
-            </span>
-            <button class="btn-delete" onclick="deleteTask('${task._id}')">
-                <i class="fas fa-trash-alt"></i>
-            </button>
-        `;
-        list.appendChild(li);
+    const li = document.createElement('li');
+    
+    // Logika kolorów obramowania na podstawie priorytetu
+    let priorityClass = '';
+    if (task.priority === 'high') priorityClass = 'border-start border-danger border-5';
+    else if (task.priority === 'medium') priorityClass = 'border-start border-warning border-5';
+    else if (task.priority === 'low') priorityClass = 'border-start border-info border-5';
+
+    li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm ${priorityClass}`;
+    
+    const titleClass = task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold';
+    
+    li.innerHTML = `
+        <span class="${titleClass}" style="cursor:pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
+            ${task.title}
+        </span>
+        <span class="badge rounded-pill bg-light text-dark border me-2">${task.priority}</span>
+        <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
+    `;
+    list.appendChild(li);
+});
+
+const taskInput = document.getElementById('taskInput');
+const addBtn = document.querySelector('button[onclick="addTask()"]'); // Znajduje przycisk dodawania
+
+taskInput.addEventListener('input', () => {
+    const value = taskInput.value.trim();
+    
+    if (value === "") {
+        // Gdy puste: pulsuje i jest szary
+        addBtn.classList.add('btn-pulse', 'btn-secondary');
+        addBtn.classList.remove('btn-success');
+    } else {
+        // Gdy coś wpisano: przestaje pulsować i robi się zielony
+        addBtn.classList.remove('btn-pulse', 'btn-secondary');
+        addBtn.classList.add('btn-success');
+    }
+});
+
+// Uruchomienie sprawdzenia na starcie, żeby przycisk pulsował od razu po załadowaniu
+taskInput.dispatchEvent(new Event('input'));
+
+async function toggleTask(id) {
+    const token = localStorage.getItem('token');
+    
+    // Wysyłamy prośbę o zmianę statusu do bazy
+    const res = await fetch(`/tasks/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
     });
+
+    if (res.ok) {
+        // KLUCZOWE: Po zmianie w bazie, odświeżamy widok, 
+        // aby funkcja fetchTasks przeliczyła pasek postępu!
+        fetchTasks(); 
+    }
 }
+
+const themeToggle = document.getElementById('themeToggle');
+const currentTheme = localStorage.getItem('theme');
+
+// Sprawdź, czy użytkownik miał już wybrany motyw
+if (currentTheme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    themeToggle.innerHTML = '<i class="fas fa-sun"></i> Tryb Jasny';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const themeToggle = document.getElementById('themeToggle');
+    if (!themeToggle) return; // Jeśli nie znajdzie przycisku, nie wywali błędu
+
+    // Funkcja pomocnicza do zmiany ikon i tekstu
+    const updateBtn = (isDark) => {
+        themeToggle.innerHTML = isDark 
+            ? '<i class="fas fa-sun"></i> Tryb Jasny' 
+            : '<i class="fas fa-moon"></i> Tryb Ciemny';
+    };
+
+    // 1. Sprawdź zapisany motyw
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateBtn(true);
+    }
+
+    // 2. Obsługa kliknięcia
+    themeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        
+        if (isDark) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'light');
+            updateBtn(false);
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+            updateBtn(true);
+        }
+    });
+});
+
+function toggleDarkMode() {
+    const html = document.documentElement;
+    const btn = document.getElementById('themeToggle');
+    const isDark = html.getAttribute('data-theme') === 'dark';
+
+    if (isDark) {
+        html.removeAttribute('data-theme');
+        localStorage.setItem('theme', 'light');
+        btn.innerHTML = '<i class="fas fa-moon"></i> Tryb Ciemny';
+    } else {
+        html.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+        btn.innerHTML = '<i class="fas fa-sun"></i> Tryb Jasny';
+    }
+}
+
+// Ten fragment sprawi, że motyw załaduje się sam przy starcie:
+(function() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        // Czekamy chwilę, aż przycisk się pojawi, żeby zmienić mu tekst
+        setTimeout(() => {
+            const btn = document.getElementById('themeToggle');
+            if(btn) btn.innerHTML = '<i class="fas fa-sun"></i> Tryb Jasny';
+        }, 100);
+    }
+})();
 
 </script>
 </body>

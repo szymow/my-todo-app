@@ -253,3 +253,10 @@ app.post('/auth/login', async (req, res) => {
         res.status(500).json({ message: 'Błąd serwera', error: err.message });
     }
 });
+
+// Dodaj to na samym dole pliku JS
+setInterval(() => {
+    if (localStorage.getItem('token')) {
+        fetchTasks(); 
+    }
+}, 60000); // Sprawdzaj co 60 sekund

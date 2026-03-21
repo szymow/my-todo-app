@@ -264,6 +264,9 @@ async function fetchTasks() {
         if (!res.ok) throw new Error("Błąd pobierania danych");
 
         const tasks = await res.json();
+
+        checkDeadlines(tasks);
+
         list.innerHTML = '';
 
         // --- 1. LOGIKA LICZNIKÓW I PASKA POSTĘPU ---
@@ -590,6 +593,52 @@ function toggleDarkMode() {
         }, 100);
     }
 })();
+
+function requestNotificationPermission() {
+    if ("Notification" in window) {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                console.log("Powiadomienia włączone!");
+            }
+        });
+    }
+}
+
+// Wywołaj przy ładowaniu strony
+requestNotificationPermission();
+
+// Tablica do przechowywania ID zadań, o których już powiadomiliśmy (żeby nie spamować)
+let notifiedTasks = new Set();
+
+function checkDeadlines(tasks) {
+    if (Notification.permission !== "granted") return;
+
+    const now = new Date();
+    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60000);
+
+    tasks.forEach(task => {
+        if (!task.dueDate || task.completed || notifiedTasks.has(task._id)) return;
+
+        const deadline = new Date(task.dueDate);
+
+        // Jeśli termin jest w ciągu najbliższych 30 min i jeszcze nie minął
+        if (deadline > now && deadline <= thirtyMinutesFromNow) {
+            showNotification(task);
+            notifiedTasks.add(task._id); // Zapamiętaj, że powiadomienie wysłano
+        }
+    });
+}
+
+function showNotification(task) {
+    const notification = new Notification("Zbliżający się termin!", {
+        body: `Zadanie: "${task.title}" kończy się wkrótce!`,
+        icon: "/path/to/your/icon.png" // Możesz dodać ikonkę swojej aplikacji
+    });
+
+    notification.onclick = () => {
+        window.focus(); // Po kliknięciu wróć do karty aplikacji
+    };
+}
 
 </script>
 </body>

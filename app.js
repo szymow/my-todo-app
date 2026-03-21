@@ -8,16 +8,24 @@ const mongoose = require('mongoose');
 const app = express();
 app.use(express.json());
 
-const auth = (req, res, next) => {
+
+const auth = async (req, res, next) => {
     try {
-        const token = req.header('Authorization').replace('Bearer ', '');
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.userId = decoded.userId;
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        if (!token) throw new Error('Brak tokena');
+
+        const decoded = jwt.verify(token, 'TWOJ_TAJNY_KLUCZ');
+        const user = await User.findOne({ _id: decoded._id });
+
+        if (!user) throw new Error();
+
+        req.user = user; // To naprawia błąd "Cannot read properties of undefined"
         next();
     } catch (e) {
-        res.status(401).json({ error: "Zaloguj się ponownie" });
+        res.status(401).json({ message: 'Zaloguj się ponownie' });
     }
 };
+
 
 // 1. Połączenie z MongoDB (Zastąp URL swoim ze strony Atlas)
 const DB_URL = "mongodb+srv://szymow94_db_user:FqsKwnh5pZBNUY6S@cluster0.mofq7og.mongodb.net/?appName=Cluster0"; 
@@ -35,28 +43,43 @@ app.use(express.static('public'));
 // Pobierz wszystkie zadania
 app.get('/tasks', auth, async (req, res) => {
     try {
-        // 1. Pobieramy zadania użytkownika
-        let tasks = await Task.find({ owner: req.userId });
+        // 1. POPRAWKA: Używamy req.user._id (zgodnie z Twoim middleware auth)
+        // Szukamy tylko zadań należących do zalogowanego użytkownika
+        let tasks = await Task.find({ owner: req.user._id });
 
-        // 2. Definiujemy "wagę" dla każdego priorytetu
+        // 2. Definiujemy wagę dla priorytetów
         const priorityOrder = { 'high': 1, 'medium': 2, 'low': 3 };
 
-        // 3. Sortujemy tablicę
+        // 3. Zaawansowane sortowanie
         tasks.sort((a, b) => {
-            // Najpierw sortujemy po priorytecie (używając wag)
+            // A. Najpierw status: Nieukończone (false = 0) przed ukończonymi (true = 1)
+            if (a.completed !== b.completed) {
+                return a.completed - b.completed;
+            }
+
+            // B. Potem priorytet: High (1) przed Low (3)
             const weightA = priorityOrder[a.priority] || 3;
             const weightB = priorityOrder[b.priority] || 3;
-            
             if (weightA !== weightB) {
                 return weightA - weightB;
             }
-            
-            // Jeśli priorytety są takie same, opcjonalnie sortujemy po statusie (nieukończone na górze)
-            return a.completed - b.completed;
+
+            // C. Na końcu data: Najbliższe terminy na górze
+            // Jeśli oba mają daty, porównujemy je
+            if (a.dueDate && b.dueDate) {
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            }
+            // Zadania z datą wyżej niż te bez daty
+            if (a.dueDate) return -1;
+            if (b.dueDate) return 1;
+
+            return 0;
         });
 
+        // Wysyłamy gotową, posortowaną listę
         res.json(tasks);
     } catch (err) {
+        console.error("Błąd pobierania zadań:", err);
         res.status(500).json({ error: "Błąd pobierania zadań" });
     }
 });
@@ -65,21 +88,20 @@ app.get('/tasks', auth, async (req, res) => {
 // 1. Upewnij się, że masz tu 'auth' jako drugi parametr!
 app.post('/tasks', auth, async (req, res) => {
     try {
-        // Sprawdzamy, czy title istnieje i nie jest tylko spacjami
-        if (!req.body.title || req.body.title.trim() === "") {
-            return res.status(400).json({ error: "Tytuł zadania nie może być pusty!" });
-        }
+        console.log("Serwer otrzymał:", req.body); // Sprawdź to w terminalu!
 
-        const newTask = new Task({
+        const task = new Task({
             title: req.body.title,
             priority: req.body.priority || 'low',
-            owner: req.userId 
+            dueDate: req.body.dueDate || null, // PRZYPISANIE DATY
+            owner: req.user._id
         });
 
-        await newTask.save();
-        res.status(201).json(newTask);
+        await task.save();
+        res.status(201).send(task); 
     } catch (err) {
-        res.status(400).json({ error: "Błąd walidacji" });
+        console.error("Błąd zapisu:", err);
+        res.status(400).send(err);
     }
 });
 
@@ -121,19 +143,23 @@ app.patch('/tasks/:id', async (req, res) => {
 });
 
 // Trasa do przełączania statusu zadania
+// TRASA W app.js
 app.patch('/tasks/:id/toggle', auth, async (req, res) => {
     try {
-        // Szukamy zadania należącego do zalogowanego użytkownika
-        const task = await Task.findOne({ _id: req.params.id, owner: req.userId });
-        if (!task) return res.status(404).json({ error: "Nie znaleziono zadania" });
+        // Szukamy zadania po ID ORAZ właścicielu (bezpieczeństwo!)
+        const task = await Task.findOne({ _id: req.params.id, owner: req.user._id });
 
-        // Odwracamy status: jeśli był false, będzie true (i odwrotnie)
-        task.completed = !task.completed; 
+        if (!task) {
+            return res.status(404).json({ error: "Nie znaleziono zadania" });
+        }
+
+        // Zmieniamy status na przeciwny
+        task.completed = !task.completed;
         await task.save();
 
         res.json(task);
-    } catch (err) {
-        res.status(500).json({ error: "Błąd serwera przy zmianie statusu" });
+    } catch (e) {
+        res.status(500).json({ error: "Błąd serwera podczas aktualizacji" });
     }
 });
 // Usuwanie zadania
@@ -161,11 +187,12 @@ const User = mongoose.model('User', UserSchema);
 const TaskSchema = new mongoose.Schema({
     title: { type: String, required: true },
     completed: { type: Boolean, default: false },
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    priority: { 
-        type: String, 
-        enum: ['high', 'medium', 'low'], 
-        default: 'low' 
+    priority: { type: String, default: 'low' },
+    dueDate: { type: Date }, // To już mamy
+    owner: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        required: true 
     }
 });
 
@@ -187,11 +214,27 @@ app.post('/auth/register', async (req, res) => {
 
 // LOGOWANIE
 app.post('/auth/login', async (req, res) => {
-    const user = await User.findOne({ username: req.body.username });
-    if (!user || !(await bcrypt.compare(req.body.password, user.password))) {
-        return res.status(401).json({ error: "Błędne dane logowania" });
-    }
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-    res.json({ token });
-});
+    try {
+        const { username, password } = req.body;
+        console.log("Próba logowania dla:", username);
 
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(401).json({ message: 'Błędny użytkownik lub hasło' });
+        }
+
+        // Sprawdzenie hasła (upewnij się, że używasz bcrypt przy rejestracji!)
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Błędny użytkownik lub hasło' });
+        }
+
+        // Generowanie tokena - klucz 'SECRET' musi być taki sam w auth
+        const token = jwt.sign({ _id: user._id }, 'TWOJ_TAJNY_KLUCZ', { expiresIn: '7d' });
+
+        res.json({ token, username: user.username });
+    } catch (err) {
+        console.error("BŁĄD LOGOWANIA:", err); // TO WYJAŚNI BŁĄD 500 W TERMINALU
+        res.status(500).json({ message: 'Błąd serwera', error: err.message });
+    }
+});

@@ -16,9 +16,24 @@
 
 /* To musi być w Twoim CSS */
 [data-theme="dark"] {
-    --bg-color: #121212;
-    --card-bg: #1e1e1e;
-    --text-color: #f8f9fa;
+    --bg-color: #121212 !important;
+    --card-bg: #1e1e1e !important;
+    --text-color: #ffffff !important; /* Biały tekst dla wszystkiego */
+}
+
+/* Dodaj to poniżej, aby mieć pewność, że nagłówki nie zostaną czarne */
+[data-theme="dark"] h1, 
+[data-theme="dark"] h2, 
+[data-theme="dark"] h3, 
+[data-theme="dark"] span,
+[data-theme="dark"] p {
+    color: #ffffff !important;
+}
+
+/* Jeśli używasz kart Bootstrapa */
+[data-theme="dark"] .card-title, 
+[data-theme="dark"] .card-header {
+    color: #ffffff !important;
 }
 
 /* Upewnij się, że elementy używają tych zmiennych! */
@@ -48,6 +63,32 @@ body {
     opacity: 0.6;
 }
 
+.d-flex.gap-2 .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.8rem;
+    height: 38px; /* Stała wysokość dla obu przycisków */
+}
+
+/* Ikony wewnątrz przycisków */
+.btn i {
+    margin-right: 5px;
+}
+
+/* Wymuszamy biały tekst dla wszystkich spanów w trybie ciemnym */
+[data-theme="dark"] .list-group-item span, 
+[data-theme="dark"] .badge {
+    color: #ffffff !important;
+}
+
+/* Jeśli odznaki mają jasne tło, zmieńmy je na ciemniejsze, żeby biały tekst był widoczny */
+[data-theme="dark"] .badge.bg-light,
+[data-theme="dark"] .custom-badge {
+    background-color: #444444 !important;
+    border: 1px solid #666666 !important;
+}
+
     </style>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
@@ -71,31 +112,41 @@ body {
 
     <div id="todoSection" class="row justify-content-center hidden">
         <div class="col-md-6">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="text-primary m-0">Twoje Zadania</h2>
-
-                <div class="text-end mb-3">
-<button id="themeToggle" class="btn btn-sm btn-outline-secondary" onclick="toggleDarkMode()">
-    <i class="fas fa-moon"></i> Tryb Ciemny
-</button>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 style="color: var(--text-color);">Moje Zadania</h2>
+    
+    <div class="d-flex gap-2">
+        <button id="themeToggle" class="btn btn-sm btn-outline-secondary" onclick="toggleDarkMode()">
+            <i class="fas fa-moon"></i> Tryb Ciemny
+        </button>
+        
+        <button onclick="logout()" class="btn btn-sm btn-danger">
+            <i class="fas fa-sign-out-alt"></i> Wyloguj
+        </button>
+    </div>
 </div>
-
-                <button class="btn btn-sm btn-danger" onclick="logout()">Wyloguj <i class="fas fa-sign-out-alt"></i></button>
-            </div>
             
-<div class="input-group mb-3">
-    <input type="text" id="taskInput" class="form-control" placeholder="Co dziś robimy?">
-    <select id="priorityInput" class="form-select" style="max-width: 130px;">
-        <option value="low">Niski</option>
-        <option value="medium">Średni</option>
-        <option value="high">Wysoki</option>
-    </select>
-    <button class="btn btn-success" onclick="addTask()"><i class="fas fa-plus"></i></button>
+<div class="mb-3">
+    <input type="text" id="taskInput" class="form-control mb-2" placeholder="Co jest do zrobienia?">
+    <div class="d-flex gap-2">
+        <select id="taskPriority" class="form-select">
+            <option value="low">Niski</option>
+            <option value="medium">Średni</option>
+            <option value="high">Wysoki</option>
+        </select>
+        <input type="datetime-local" id="taskDeadline" class="form-control">
+        <button type="button" onclick="addTask()" class="btn btn-primary">Dodaj</button>
+    </div>
 </div>
 
 <div id="statsSection" class="mb-3 animate__animated animate__fadeIn">
     <div class="d-flex justify-content-between mb-1">
-        <span id="taskCounter" class="badge bg-primary px-3 py-2">Pozostało: 0 z 0</span>
+
+        
+    <p class="badge bg-primary px-3 py-2">
+        Pozostało: <span id="activeCount">0</span> z <span id="totalCount">0</span>
+    </p>
+
         <span id="percentCounter" class="fw-bold text-primary">0%</span>
     </div>
     <div class="progress" style="height: 10px; border-radius: 5px;">
@@ -111,6 +162,9 @@ body {
 </div>
 
 <script>
+
+let tasks = []; // Definicja globalna
+
     const API_URL = ''; // Zostaw puste, jeśli frontend i backend są na tym samym serwerze
 
     // Główna funkcja sprawdzająca czy jesteśmy zalogowani
@@ -159,132 +213,148 @@ body {
     }
 
     // Pobieranie zadań z tokenem JWT w nagłówku
+
 async function fetchTasks() {
     const token = localStorage.getItem('token');
-    const res = await fetch('/tasks', {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-    if (res.status === 401) return logout(); 
-
-    const tasks = await res.json();
     const list = document.getElementById('taskList');
-    if (!list) return; // Bezpiecznik, jeśli elementu nie ma na stronie
     
-    list.innerHTML = '';
+    // Pobieramy elementy liczników i paska postępu
+    const activeCountEl = document.getElementById('activeCount');
+    const totalCountEl = document.getElementById('totalCount');
+    const progressBar = document.getElementById('taskProgressBar');
 
-    // 1. Generowanie elementów listy
-    tasks.forEach((task, index) => {
-        const li = document.createElement('li');
-        
-        let priorityColor = 'border-info';
-        if (task.priority === 'high') priorityColor = 'border-danger';
-        else if (task.priority === 'medium') priorityColor = 'border-warning';
-
-        li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${priorityColor} animate__animated animate__fadeInUp`;
-        li.style.animationDelay = `${index * 0.1}s`;
-
-        // KLUCZOWE: Sprawdzamy, czy zadanie jest ukończone (obsługa różnych typów danych)
-        const isCompleted = task.completed === true || task.completed === 'true';
-        const titleClass = isCompleted ? 'text-decoration-line-through text-muted' : 'fw-bold';
-        
-        li.innerHTML = `
-            <span class="${titleClass}" style="cursor:pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
-                ${task.title}
-            </span>
-            <span class="badge rounded-pill bg-light text-dark border me-2 small">${task.priority}</span>
-            <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
-        `;
-        list.appendChild(li);
-    });
-
-    // --- 2. POPRAWIONA LOGIKA LICZNIKA I PASKA ---
-    const total = tasks.length;
-    // Liczymy tylko te, które faktycznie są true
-    const completed = tasks.filter(t => t.completed === true || t.completed === 'true').length;
-    const remaining = total - completed;
-    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    const taskCounter = document.getElementById('taskCounter');
-    const progressBar = document.getElementById('progressBar');
-    const percentText = document.getElementById('percentCounter');
-
-    // Aktualizacja tekstu (Pozostało: X z Y)
-    if (taskCounter) {
-        if (total === 0) {
-            taskCounter.innerText = "Brak zadań";
-        } else if (remaining === 0) {
-            taskCounter.innerText = "🎉 Wszystko gotowe!";
-        } else {
-            taskCounter.innerText = `Pozostało: ${remaining} z ${total}`;
-        }
+    if (!token) {
+        console.error("Brak tokena - zaloguj się.");
+        return;
     }
 
-    // Aktualizacja paska postępu
-    if (progressBar) {
-        progressBar.style.width = `${percent}%`;
-        if (percentText) percentText.innerText = `${percent}%`;
-
-        // Zmiana koloru paska przy 100%
-        if (percent === 100 && total > 0) {
-            progressBar.classList.remove('bg-success');
-            progressBar.classList.add('bg-warning'); // Złoty kolor sukcesu
-        } else {
-            progressBar.classList.remove('bg-warning');
-            progressBar.classList.add('bg-success'); // Standardowy zielony
-        }
-    }
-}
-async function toggleTask(id) {
-    const token = localStorage.getItem('token');
-    
     try {
-        const res = await fetch(`/tasks/${id}/toggle`, {
-            method: 'PATCH',
-            headers: { 
-                'Authorization': `Bearer ${token}` 
-            }
+        const res = await fetch('/tasks', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        if (res.ok) {
-            // KLUCZOWE: Po zmianie w bazie, pobieramy listę od nowa,
-            // aby funkcja fetchTasks przeliczyła licznik!
-            fetchTasks(); 
+        if (!res.ok) throw new Error("Błąd pobierania danych");
+
+        const tasks = await res.json();
+        list.innerHTML = '';
+
+        // --- 1. LOGIKA LICZNIKÓW I PASKA POSTĘPU ---
+        const total = tasks.length;
+        const completed = tasks.filter(t => t.completed).length;
+        const active = total - completed;
+
+        if (activeCountEl) activeCountEl.innerText = active;
+        if (totalCountEl) totalCountEl.innerText = total;
+
+        if (progressBar) {
+            const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+            progressBar.style.width = progressPercent + '%';
+            progressBar.innerText = progressPercent + '%';
+            progressBar.setAttribute('aria-valuenow', progressPercent);
         }
+
+        if (total === 0) {
+            list.innerHTML = '<li class="list-group-item text-center text-muted">Brak zadań na liście</li>';
+            return;
+        }
+
+        // --- 2. RENDEROWANIE LISTY ---
+        tasks.forEach(task => {
+            const li = document.createElement('li');
+            
+            // Obsługa daty (jeśli istnieje)
+            let dateHtml = '';
+            if (task.dueDate) {
+                const d = new Date(task.dueDate);
+                const formattedDate = d.toLocaleString('pl-PL', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                });
+                dateHtml = `<div class="mt-1"><small class="text-muted">📅 ${formattedDate}</small></div>`;
+            }
+
+            // Kolor paska bocznego na podstawie priorytetu
+            let pColor = 'border-info'; // low
+            if (task.priority === 'high') pColor = 'border-danger';
+            else if (task.priority === 'medium') pColor = 'border-warning';
+
+            li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${pColor}`;
+            
+            li.innerHTML = `
+                <div style="flex-grow: 1;">
+                    <span class="${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
+                          onclick="toggleTask('${task._id}')" style="cursor:pointer">
+                        ${task.title}
+                    </span>
+                    ${dateHtml}
+                </div>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark border me-3">${task.priority}</span>
+                    <i class="fas fa-trash text-danger" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
+                </div>
+            `;
+            list.appendChild(li);
+        });
+
     } catch (err) {
-        console.error("Błąd podczas przełączania zadania:", err);
+        console.error("Błąd w fetchTasks:", err);
     }
 }
 
 async function addTask() {
-    const input = document.getElementById('taskInput');
-    const title = input.value.trim();
+    console.log("Naciśnięto przycisk Dodaj...");
 
-    // Blokada przed wysłaniem pustego tekstu
-    if (title === "") {
-        alert("Wpisz treść zadania!");
-        return; 
-    }
-
-    const priorityInput = document.getElementById('priorityInput');
+    const titleInput = document.getElementById('taskInput');
+    const priorityInput = document.getElementById('taskPriority');
+    const deadlineInput = document.getElementById('taskDeadline');
     const token = localStorage.getItem('token');
 
-    const res = await fetch('/tasks', {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
-            title: title, // Używamy już "wyczyszczonego" z białych znaków tytułu
-            priority: priorityInput.value 
-        })
-    });
+    // TEST 1: Czy pola istnieją?
+    if (!titleInput || !priorityInput || !deadlineInput) {
+        alert("BŁĄD: Nie znaleziono pól formularza w HTML! Sprawdź ID.");
+        return;
+    }
 
-    if (res.ok) {
-        input.value = '';
-        input.dispatchEvent(new Event('input')); // Przywraca pulsowanie
-        fetchTasks();
+    if (!titleInput.value.trim()) {
+        alert("Wpisz treść zadania!");
+        return;
+    }
+
+    const taskData = {
+        title: titleInput.value.trim(),
+        priority: priorityInput.value,
+        dueDate: deadlineInput.value || null
+    };
+
+    console.log("Dane przygotowane do wysyłki:", taskData);
+
+    try {
+        const res = await fetch('/tasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(taskData)
+        });
+
+        console.log("Odpowiedź z serwera (status):", res.status);
+
+        if (res.ok) {
+            const savedTask = await res.json();
+            console.log("Zadanie zapisane pomyślnie:", savedTask);
+            
+            titleInput.value = ''; // Czyścimy pole
+            deadlineInput.value = '';
+            
+            fetchTasks(); // Odświeżamy listę
+        } else {
+            const errorData = await res.json();
+            alert("Serwer odrzucił zadanie: " + (errorData.message || "Błąd"));
+        }
+    } catch (err) {
+        console.error("BŁĄD KRYTYCZNY WYSYŁANIA:", err);
+        alert("Nie udało się połączyć z serwerem.");
     }
 }
 
@@ -299,25 +369,65 @@ async function addTask() {
 
     checkLogin();
 
-    tasks.forEach(task => {
+tasks.forEach(task => {
     const li = document.createElement('li');
     
-    // Logika kolorów obramowania na podstawie priorytetu
-    let priorityClass = '';
-    if (task.priority === 'high') priorityClass = 'border-start border-danger border-5';
-    else if (task.priority === 'medium') priorityClass = 'border-start border-warning border-5';
-    else if (task.priority === 'low') priorityClass = 'border-start border-info border-5';
+    let warningClass = '';
+    let dateHtml = '';
 
-    li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm ${priorityClass}`;
-    
-    const titleClass = task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold';
-    
+    // 1. Logika przetwarzania daty
+    if (task.dueDate) {
+        const deadline = new Date(task.dueDate);
+        const now = new Date();
+        const diffMs = deadline - now;
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        // Formatowanie daty na polski format: DD.MM.RRRR, GG:MM
+        const formattedDate = deadline.toLocaleString('pl-PL', {
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric',
+            hour: '2-digit', 
+            minute: '2-digit'
+        });
+
+        // Tworzymy napis z ikonką zegara
+        dateHtml = `<div class="mt-1"><small class="text-muted"><i class="far fa-clock"></i> Termin: ${formattedDate}</small></div>`;
+
+        // 2. Logika ostrzeżeń wizualnych
+        if (!task.completed) {
+            if (diffMs < 0) {
+                // Zadanie po terminie - czerwone tło
+                warningClass = 'bg-danger-subtle border-danger opacity-75';
+            } else if (diffHours <= 2) {
+                // Mniej niż 2h - pilne (pulsowanie)
+                warningClass = 'animate__animated animate__pulse animate__infinite border-danger shadow-sm';
+            }
+        }
+    }
+
+    // 3. Kolor paska bocznego (priorytet)
+    let priorityColor = 'border-info';
+    if (task.priority === 'high') priorityColor = 'border-danger';
+    else if (task.priority === 'medium') priorityColor = 'border-warning';
+
+    // Łączymy wszystkie klasy w jedną
+    li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${priorityColor} ${warningClass}`;
+
+    // 4. Budowanie struktury kafelka
     li.innerHTML = `
-        <span class="${titleClass}" style="cursor:pointer; flex-grow: 1;" onclick="toggleTask('${task._id}')">
-            ${task.title}
-        </span>
-        <span class="badge rounded-pill bg-light text-dark border me-2">${task.priority}</span>
-        <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
+        <div style="flex-grow: 1;">
+            <span class="${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
+                  style="cursor:pointer" onclick="toggleTask('${task._id}')">
+                ${task.title}
+            </span>
+            ${dateHtml} </div>
+        <div class="d-flex align-items-center">
+            <span class="badge rounded-pill bg-primary me-3 text-uppercase" style="font-size: 0.7rem;">
+                ${task.priority}
+            </span>
+            <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
+        </div>
     `;
     list.appendChild(li);
 });
@@ -345,16 +455,20 @@ taskInput.dispatchEvent(new Event('input'));
 async function toggleTask(id) {
     const token = localStorage.getItem('token');
     
-    // Wysyłamy prośbę o zmianę statusu do bazy
-    const res = await fetch(`/tasks/${id}/toggle`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
+    try {
+        const res = await fetch(`/tasks/${id}/toggle`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
 
-    if (res.ok) {
-        // KLUCZOWE: Po zmianie w bazie, odświeżamy widok, 
-        // aby funkcja fetchTasks przeliczyła pasek postępu!
-        fetchTasks(); 
+        if (res.ok) {
+            // KLUCZOWY MOMENT: 
+            // Po zmianie statusu w bazie, musimy ponownie wywołać fetchTasks(),
+            // aby przeliczyło procenty i odświeżyło widok!
+            await fetchTasks(); 
+        }
+    } catch (err) {
+        console.error("Błąd toggle:", err);
     }
 }
 

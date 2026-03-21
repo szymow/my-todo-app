@@ -76,6 +76,15 @@ body {
     margin-right: 5px;
 }
 
+.task-title {
+    display: inline-block;
+    max-width: 100%;
+    word-wrap: break-word;      /* Starsze przeglądarki */
+    overflow-wrap: break-word; /* Nowoczesne przeglądarki */
+    word-break: break-word;    /* Wymusza łamanie bardzo długich słów */
+    white-space: normal;       /* Pozwala na zawijanie */
+}
+
 /* Wymuszamy biały tekst dla wszystkich spanów w trybie ciemnym */
 [data-theme="dark"] .list-group-item span, 
 [data-theme="dark"] .badge {
@@ -126,8 +135,11 @@ body {
     </div>
 </div>
             
-<div class="mb-3">
+<div class="mb-3 p-3 border rounded bg-light">
+    <input type="hidden" id="editTaskId" value="">
+
     <input type="text" id="taskInput" class="form-control mb-2" placeholder="Co jest do zrobienia?">
+    
     <div class="d-flex gap-2">
         <select id="taskPriority" class="form-select">
             <option value="low">Niski</option>
@@ -135,7 +147,10 @@ body {
             <option value="high">Wysoki</option>
         </select>
         <input type="datetime-local" id="taskDeadline" class="form-control">
-        <button type="button" onclick="addTask()" class="btn btn-primary">Dodaj</button>
+        
+        <button type="button" id="submitTaskBtn" onclick="handleTaskSubmit()" class="btn btn-primary">Dodaj</button>
+        
+        <button type="button" id="cancelEditBtn" onclick="cancelEdit()" class="btn btn-secondary d-none">Anuluj</button>
     </div>
 </div>
 
@@ -292,19 +307,25 @@ async function fetchTasks() {
 
             li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${pColor}`;
             
-            li.innerHTML = `
-                <div style="flex-grow: 1;">
-                    <span class="${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
-                          onclick="toggleTask('${task._id}')" style="cursor:pointer">
-                        ${task.title}
-                    </span>
-                    ${dateHtml}
-                </div>
-                <div class="d-flex align-items-center">
-                    <span class="badge bg-light text-dark border me-3">${task.priority}</span>
-                    <i class="fas fa-trash text-danger" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
-                </div>
-            `;
+            // Fragment wewnątrz pętli forEach w fetchTasks:
+li.innerHTML = `
+<div style="flex-grow: 1; min-width: 0;">
+        <span class="task-title ${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
+              onclick="toggleTask('${task._id}')" style="cursor:pointer">
+            ${task.title}
+        </span>
+        ${dateHtml}
+    </div>
+    <div class="d-flex align-items-center ms-2" style="flex-shrink: 0;">
+        <span class="badge bg-light text-dark border me-2">${task.priority}</span>
+        
+        <i class="fas fa-edit text-primary me-2" 
+           onclick="editTask('${task._id}', '${task.title}', '${task.dueDate}', '${task.priority}')" 
+           style="cursor:pointer"></i>
+           
+        <i class="fas fa-trash text-danger" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
+    </div>
+`;
             list.appendChild(li);
         });
 
@@ -313,36 +334,25 @@ async function fetchTasks() {
     }
 }
 
-async function addTask() {
-    console.log("Naciśnięto przycisk Dodaj...");
+// 1. GŁÓWNA FUNKCJA (DODAWANIE / ZAPISYWANIE)
+async function handleTaskSubmit() {
+    const editId = document.getElementById('editTaskId').value;
+    const title = document.getElementById('taskInput').value;
+    const priority = document.getElementById('taskPriority').value;
+    const dueDate = document.getElementById('taskDeadline').value;
 
-    const titleInput = document.getElementById('taskInput');
-    const priorityInput = document.getElementById('taskPriority');
-    const deadlineInput = document.getElementById('taskDeadline');
+    if (!title) return alert("Wpisz treść zadania!");
+
+    const taskData = { title, priority, dueDate };
     const token = localStorage.getItem('token');
 
-    // TEST 1: Czy pola istnieją?
-    if (!titleInput || !priorityInput || !deadlineInput) {
-        alert("BŁĄD: Nie znaleziono pól formularza w HTML! Sprawdź ID.");
-        return;
-    }
-
-    if (!titleInput.value.trim()) {
-        alert("Wpisz treść zadania!");
-        return;
-    }
-
-    const taskData = {
-        title: titleInput.value.trim(),
-        priority: priorityInput.value,
-        dueDate: deadlineInput.value || null
-    };
-
-    console.log("Dane przygotowane do wysyłki:", taskData);
+    // Jeśli editId istnieje -> PATCH (aktualizacja), jeśli nie -> POST (nowe)
+    const url = editId ? `/tasks/${editId}` : '/tasks';
+    const method = editId ? 'PATCH' : 'POST';
 
     try {
-        const res = await fetch('/tasks', {
-            method: 'POST',
+        const res = await fetch(url, {
+            method: method,
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -350,24 +360,49 @@ async function addTask() {
             body: JSON.stringify(taskData)
         });
 
-        console.log("Odpowiedź z serwera (status):", res.status);
-
         if (res.ok) {
-            const savedTask = await res.json();
-            console.log("Zadanie zapisane pomyślnie:", savedTask);
-            
-            titleInput.value = ''; // Czyścimy pole
-            deadlineInput.value = '';
-            
-            fetchTasks(); // Odświeżamy listę
-        } else {
-            const errorData = await res.json();
-            alert("Serwer odrzucił zadanie: " + (errorData.message || "Błąd"));
+            cancelEdit(); // Czyści formularz
+            fetchTasks(); // Odświeża listę i pasek postępu
         }
     } catch (err) {
-        console.error("BŁĄD KRYTYCZNY WYSYŁANIA:", err);
-        alert("Nie udało się połączyć z serwerem.");
+        console.error("Błąd wysyłania:", err);
     }
+}
+
+// 2. FUNKCJA ŁADUJĄCA DANE DO EDYCJI
+function editTask(id, title, dueDate, priority) {
+    // Wypełniamy pola danymi
+    document.getElementById('editTaskId').value = id;
+    document.getElementById('taskInput').value = title;
+    document.getElementById('taskPriority').value = priority;
+    
+    if (dueDate && dueDate !== 'null') {
+        // Formatowanie daty dla inputa datetime-local
+        const d = new Date(dueDate);
+        const formattedDate = d.toISOString().slice(0, 16);
+        document.getElementById('taskDeadline').value = formattedDate;
+    }
+
+    // Zmiana UI
+    const btn = document.getElementById('submitTaskBtn');
+    btn.innerText = "Zapisz zmiany";
+    btn.classList.replace('btn-primary', 'btn-warning');
+    document.getElementById('cancelEditBtn').classList.remove('d-none');
+    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 3. FUNKCJA ANULUJĄCA EDYCJĘ
+function cancelEdit() {
+    document.getElementById('editTaskId').value = "";
+    document.getElementById('taskInput').value = "";
+    document.getElementById('taskDeadline').value = "";
+    document.getElementById('taskPriority').value = "low";
+    
+    const btn = document.getElementById('submitTaskBtn');
+    btn.innerText = "Dodaj";
+    btn.classList.replace('btn-warning', 'btn-primary');
+    document.getElementById('cancelEditBtn').classList.add('d-none');
 }
 
     async function deleteTask(id) {

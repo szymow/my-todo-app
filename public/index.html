@@ -291,9 +291,8 @@ function getCategoryBadge(category) {
 
 async function fetchTasks() {
     const token = localStorage.getItem('token');
-    const list = document.getElementById('taskList');
+    const list = document.getElementById('taskList'); // Tutaj jest zmienna "list"
     
-    // Pobieramy elementy liczników i paska postępu
     const activeCountEl = document.getElementById('activeCount');
     const totalCountEl = document.getElementById('totalCount');
     const progressBar = document.getElementById('taskProgressBar');
@@ -313,9 +312,9 @@ async function fetchTasks() {
 
         const tasks = await res.json();
 
-        checkDeadlines(tasks);
+        if (typeof checkDeadlines === 'function') checkDeadlines(tasks);
 
-        list.innerHTML = '';
+        list.innerHTML = ''; // Czyszczenie listy
 
         // --- 1. LOGIKA LICZNIKÓW I PASKA POSTĘPU ---
         const total = tasks.length;
@@ -333,49 +332,54 @@ async function fetchTasks() {
         }
 
         if (total === 0) {
-            list.innerHTML = '<li class="list-group-item text-center text-muted">Brak zadań na liście</li>';
+            list.innerHTML = '<li class="list-group-item text-center text-muted p-4">Brak zadań na liście</li>';
             return;
         }
 
         // --- 2. RENDEROWANIE LISTY ---
-tasks.forEach(task => {
-    const li = document.createElement('li');
-    // Flexbox: rozpycha lewą i prawą stronę (justify-content-between), wyrównuje w pionie (align-items-center)
-    li.className = 'list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm rounded p-3';
+        tasks.forEach(task => {
+            const li = document.createElement('li');
 
-    // Formatowanie daty zakończenia
-    const deadlineHtml = task.dueDate 
-        ? `<span class="text-muted ms-2" style="font-size: 0.85rem;"><i class="far fa-clock"></i> ${new Date(task.dueDate).toLocaleString([], {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'})}</span>` 
-        : '';
+            // --- KOLOR OBRAMOWANIA PRIORYTETU ---
+            let priorityClass = 'border-info'; // Domyślnie niski
+            if (task.priority === 'high') priorityClass = 'border-danger';
+            else if (task.priority === 'medium') priorityClass = 'border-warning';
 
-    li.innerHTML = `
-        <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
-            <span class="task-title ${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
-                  onclick="toggleTask('${task._id}')" style="cursor:pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${task.title}
-            </span>
-        </div>
+            // Połączone klasy z Twoim oryginalnym kodem + kolorowy pasek po lewej stronie
+            li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm bg-white rounded-3 p-3 border-start border-5 ${priorityClass}`;
 
-        <div class="d-flex align-items-center gap-2 flex-shrink-0">
-            
-            ${getCategoryBadge(task.category)} 
+            const deadlineHtml = task.dueDate 
+                ? `<span class="text-muted ms-2" style="font-size: 0.85rem;"><i class="far fa-clock"></i> ${new Date(task.dueDate).toLocaleString([], {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'})}</span>` 
+                : '';
 
-            <span class="badge bg-light text-dark border">${task.priority}</span>
+            li.innerHTML = `
+                <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
+                    <span class="task-title ${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
+                          onclick="toggleTask('${task._id}')" style="cursor:pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%; display: block;">
+                        ${task.title}
+                    </span>
+                </div>
 
-            ${deadlineHtml}
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                    
+                    ${typeof getCategoryBadge === 'function' ? getCategoryBadge(task.category) : `<span class="badge bg-secondary">${task.category || 'ogólne'}</span>`} 
 
-            <div class="vr mx-1"></div>
+                    <span class="badge bg-light text-dark border text-uppercase" style="font-size: 0.75rem;">${task.priority}</span>
 
-            <i class="fas fa-edit text-primary fs-5" 
-               onclick="editTask('${task._id}', '${task.title.replace(/'/g, "\\'")}', '${task.dueDate}', '${task.priority}', '${task.category || 'ogólne'}')" 
-               style="cursor:pointer"></i>
-               
-            <i class="fas fa-trash text-danger fs-5" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
-        </div>
-    `;
+                    ${deadlineHtml}
 
-    taskList.appendChild(li);
-});
+                    <div class="vr mx-1"></div>
+
+                    <i class="fas fa-edit text-primary fs-5" 
+                       onclick="editTask('${task._id}', '${task.title.replace(/'/g, "\\'")}', '${task.dueDate || ''}', '${task.priority}', '${task.category || 'ogólne'}')" 
+                       style="cursor:pointer"></i>
+                    
+                    <i class="fas fa-trash text-danger fs-5" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
+                </div>
+            `;
+
+            list.appendChild(li); // ✅ Zmieniono z taskList.appendChild na list.appendChild!
+        });
 
     } catch (err) {
         console.error("Błąd w fetchTasks:", err);

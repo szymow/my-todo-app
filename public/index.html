@@ -608,23 +608,45 @@ function requestNotificationPermission() {
 requestNotificationPermission();
 
 // Tablica do przechowywania ID zadań, o których już powiadomiliśmy (żeby nie spamować)
-let notifiedTasks = new Set();
+// Zbiór wysłanych powiadomień (zostawiamy go poza funkcją)
+let notifiedTasks = new Set(); 
 
 function checkDeadlines(tasks) {
-    if (Notification.permission !== "granted") return;
+    // 1. BEZPIECZEŃSTWO MOBILNE: Jeśli przeglądarka nie obsługuje Notification, po prostu wyjdź
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+        return; 
+    }
 
     const now = new Date();
-    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60000);
+    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
 
     tasks.forEach(task => {
-        if (!task.dueDate || task.completed || notifiedTasks.has(task._id)) return;
+        if (!task.dueDate || task.completed) {
+            return;
+        }
 
         const deadline = new Date(task.dueDate);
 
-        // Jeśli termin jest w ciągu najbliższych 30 min i jeszcze nie minął
+        // Sprawdź, czy data jest poprawna (isNaN sprawdza błędy parsowania)
+        if (isNaN(deadline.getTime())) return;
+
+        // Jeśli termin już minął, usuwamy go ze zbioru (aby móc przypomnieć np. przy zmianie daty)
+        if (deadline < now) {
+            notifiedTasks.delete(task._id);
+            return;
+        }
+
+        // 2. LOGIKA PRZYPOMNIEŃ: Między teraz a +30 minut
         if (deadline > now && deadline <= thirtyMinutesFromNow) {
-            showNotification(task);
-            notifiedTasks.add(task._id); // Zapamiętaj, że powiadomienie wysłano
+            // Sprawdź, czy już wysyłaliśmy powiadomienie o TYM konkretnym zadaniu
+            if (!notifiedTasks.has(task._id)) {
+                showNotification(task);
+                notifiedTasks.add(task._id); // Zapamiętaj wysłanie
+            }
+        } else {
+            // Jeśli termin jest daleki (np. za 2 godziny), upewnij się, że nie ma go w Set,
+            // aby przypomnieć o nim, gdy wejdzie w okno 30-minutowe.
+            notifiedTasks.delete(task._id);
         }
     });
 }
@@ -639,6 +661,12 @@ function showNotification(task) {
         window.focus(); // Po kliknięciu wróć do karty aplikacji
     };
 }
+
+setInterval(() => {
+    if (localStorage.getItem('token')) {
+        fetchTasks(); // Przeglądarka co minutę odświeży listę i sprawdzi powiadomienia
+    }
+}, 60000);
 
 </script>
 </body>

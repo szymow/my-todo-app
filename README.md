@@ -17,6 +17,7 @@ Nowoczesna i bezpieczna aplikacja do zarządzania zadaniami (To-Do List) zbudowa
 ├── package.json         # Zależności projektu
 └── README.md            # Dokumentacja projektu
 
+```
 
 # 🛡️ 1. Uwierzytelnianie i Bezpieczeństwo (JWT & Bcrypt)
 

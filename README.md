@@ -67,6 +67,7 @@ Zabezpieczone przez `auth`. Tworzy nowe zadanie i automatycznie przypisuje je do
 Zabezpieczone przez `auth`. Zanim kod cokolwiek zmieni, upewnia się, że zadanie o danym ID należy do Ciebie:
 ```javascript
 const task = await Task.findOne({ _id: req.params.id, owner: req.user._id });
+```
 
 # 🔐 1. System Logowania i Rejestracji (Zarządzanie Widokiem)
 

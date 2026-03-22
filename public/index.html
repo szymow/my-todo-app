@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure ToDo | JWT Auth</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✅</text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -135,22 +136,47 @@ body {
     </div>
 </div>
             
-<div class="mb-3 p-3 border rounded bg-light">
-    <input type="hidden" id="editTaskId" value="">
+<div class="card shadow-sm mb-4 border bg-white rounded">
+    <div class="card-body p-3">
+        <div class="row g-2 align-items-end">
+            
+            <div class="col-12 col-md-4">
+                <label class="form-label fw-bold text-muted small mb-1">Co jest do zrobienia?</label>
+                <input type="text" id="taskInput" class="form-control" placeholder="Wpisz treść zadania...">
+            </div>
 
-    <input type="text" id="taskInput" class="form-control mb-2" placeholder="Co jest do zrobienia?">
-    
-    <div class="d-flex gap-2">
-        <select id="taskPriority" class="form-select">
-            <option value="low">Niski</option>
-            <option value="medium">Średni</option>
-            <option value="high">Wysoki</option>
+            <div class="col-6 col-md-2">
+                <label class="form-label fw-bold text-muted small mb-1">Kategoria</label>
+        <select id="taskCategory" class="form-select" style="max-width: 140px;">
+            <option value="ogólne">📁 ogólne</option>
+            <option value="praca">💼 praca</option>
+            <option value="dom">🏠 dom</option>
+            <option value="hobby">🎨 hobby</option>
         </select>
-        <input type="datetime-local" id="taskDeadline" class="form-control">
-        
-        <button type="button" id="submitTaskBtn" onclick="handleTaskSubmit()" class="btn btn-primary">Dodaj</button>
-        
-        <button type="button" id="cancelEditBtn" onclick="cancelEdit()" class="btn btn-secondary d-none">Anuluj</button>
+            </div>
+
+            <div class="col-6 col-md-2">
+                <label class="form-label fw-bold text-muted small mb-1">Priorytet</label>
+                <select id="taskPriority" class="form-select">
+                    <option value="low">Niski</option>
+                    <option value="medium">Średni</option>
+                    <option value="high">Wysoki</option>
+                </select>
+            </div>
+
+            <div class="col-12 col-md-2">
+                <label class="form-label fw-bold text-muted small mb-1">Termin</label>
+                <input type="datetime-local" id="taskDeadline" class="form-control">
+            </div>
+
+            <div class="col-12 col-md-2">
+                <button type="button" id="submitTaskBtn" onclick="handleTaskSubmit()" class="btn btn-primary w-100">
+                    <i class="fas fa-plus me-1"></i> Dodaj
+                </button>
+            </div>
+
+            <input type="hidden" id="editTaskId">
+        </div>
     </div>
 </div>
 
@@ -182,6 +208,13 @@ body {
     </div>
 </div>
 
+<div class="mb-3 d-flex flex-wrap gap-2" id="filterContainer">
+    <button class="btn btn-sm btn-outline-secondary active" onclick="filterTasks('all', this)">wszystkie</button>
+    <button class="btn btn-sm btn-outline-primary" onclick="filterTasks('praca', this)">praca</button>
+    <button class="btn btn-sm btn-outline-success" onclick="filterTasks('dom', this)">dom</button>
+    <button class="btn btn-sm btn-outline-warning text-dark" onclick="filterTasks('hobby', this)">hobby</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="filterTasks('ogólne', this)">ogólne</button>
+</div>
 
             <ul id="taskList" class="list-group card overflow-hidden"></ul>
         </div>
@@ -241,6 +274,21 @@ let tasks = []; // Definicja globalna
 
     // Pobieranie zadań z tokenem JWT w nagłówku
 
+function getCategoryBadge(category) {
+    const colors = {
+        'praca': 'bg-primary text-white',
+        'dom': 'bg-success text-white',
+        'hobby': 'bg-warning text-dark',
+        'ogólne': 'bg-secondary text-white'
+    };
+    
+    // Jeśli kategoria to null/undefined, ustawiamy "ogólne"
+    const cat = category || 'ogólne'; 
+    const color = colors[cat] || 'bg-secondary text-white';
+
+    return `<span class="badge ${color}">${cat}</span>`;
+}
+
 async function fetchTasks() {
     const token = localStorage.getItem('token');
     const list = document.getElementById('taskList');
@@ -290,66 +338,101 @@ async function fetchTasks() {
         }
 
         // --- 2. RENDEROWANIE LISTY ---
-        tasks.forEach(task => {
-            const li = document.createElement('li');
-            
-            // Obsługa daty (jeśli istnieje)
-            let dateHtml = '';
-            if (task.dueDate) {
-                const d = new Date(task.dueDate);
-                const formattedDate = d.toLocaleString('pl-PL', {
-                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                });
-                dateHtml = `<div class="mt-1"><small class="text-muted">📅 ${formattedDate}</small></div>`;
-            }
+tasks.forEach(task => {
+    const li = document.createElement('li');
+    // Flexbox: rozpycha lewą i prawą stronę (justify-content-between), wyrównuje w pionie (align-items-center)
+    li.className = 'list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm rounded p-3';
 
-            // Kolor paska bocznego na podstawie priorytetu
-            let pColor = 'border-info'; // low
-            if (task.priority === 'high') pColor = 'border-danger';
-            else if (task.priority === 'medium') pColor = 'border-warning';
+    // Formatowanie daty zakończenia
+    const deadlineHtml = task.dueDate 
+        ? `<span class="text-muted ms-2" style="font-size: 0.85rem;"><i class="far fa-clock"></i> ${new Date(task.dueDate).toLocaleString([], {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'})}</span>` 
+        : '';
 
-            li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${pColor}`;
+    li.innerHTML = `
+        <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
+            <span class="task-title ${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
+                  onclick="toggleTask('${task._id}')" style="cursor:pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${task.title}
+            </span>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 flex-shrink-0">
             
-            // Fragment wewnątrz pętli forEach w fetchTasks:
-li.innerHTML = `
-<div style="flex-grow: 1; min-width: 0;">
-        <span class="task-title ${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
-              onclick="toggleTask('${task._id}')" style="cursor:pointer">
-            ${task.title}
-        </span>
-        ${dateHtml}
-    </div>
-    <div class="d-flex align-items-center ms-2" style="flex-shrink: 0;">
-        <span class="badge bg-light text-dark border me-2">${task.priority}</span>
-        
-        <i class="fas fa-edit text-primary me-2" 
-           onclick="editTask('${task._id}', '${task.title}', '${task.dueDate}', '${task.priority}')" 
-           style="cursor:pointer"></i>
-           
-        <i class="fas fa-trash text-danger" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
-    </div>
-`;
-            list.appendChild(li);
-        });
+            ${getCategoryBadge(task.category)} 
+
+            <span class="badge bg-light text-dark border">${task.priority}</span>
+
+            ${deadlineHtml}
+
+            <div class="vr mx-1"></div>
+
+            <i class="fas fa-edit text-primary fs-5" 
+               onclick="editTask('${task._id}', '${task.title.replace(/'/g, "\\'")}', '${task.dueDate}', '${task.priority}', '${task.category || 'ogólne'}')" 
+               style="cursor:pointer"></i>
+               
+            <i class="fas fa-trash text-danger fs-5" onclick="deleteTask('${task._id}')" style="cursor:pointer"></i>
+        </div>
+    `;
+
+    taskList.appendChild(li);
+});
 
     } catch (err) {
         console.error("Błąd w fetchTasks:", err);
     }
 }
 
+function filterTasks(category, clickedButton) {
+    // 1. Wizualna zmiana aktywnego przycisku
+    const buttons = document.querySelectorAll('#filterContainer .btn');
+    buttons.forEach(btn => btn.classList.remove('active')); // Zabieramy podświetlenie wszystkim
+    clickedButton.classList.add('active'); // Dajemy podświetlenie klikniętemu
+
+    // 2. Pobieramy wszystkie kafelki zadań z listy
+    const taskElements = document.querySelectorAll('#taskList .list-group-item');
+
+    taskElements.forEach(taskEl => {
+        // Szukamy tekstu wewnątrz plakietki badge (pobieramy wszystkie spany i szukamy badge'a)
+        const badges = taskEl.querySelectorAll('.badge'); 
+        let taskCategory = 'ogólne';
+
+        // Przeszukujemy odznaki w poszukiwaniu tekstu kategorii
+        badges.forEach(badge => {
+            const text = badge.innerText.trim().toLowerCase();
+            if (['praca', 'dom', 'hobby', 'ogólne'].includes(text)) {
+                taskCategory = text;
+            }
+        });
+
+        // 3. Logika ukrywania/pokazywania (używamy !important dla pewności)
+        if (category === 'all' || taskCategory === category.toLowerCase()) {
+            taskEl.style.setProperty('display', 'flex', 'important'); // Pokaż
+        } else {
+            taskEl.style.setProperty('display', 'none', 'important'); // Ukryj
+        }
+    });
+}
+
+
 // 1. GŁÓWNA FUNKCJA (DODAWANIE / ZAPISYWANIE)
 async function handleTaskSubmit() {
+    // 1. Pobieramy przycisk po unikalnym ID (Bezpiecznie!)
+    const addBtn = document.getElementById('submitTaskBtn');
+
     const editId = document.getElementById('editTaskId').value;
     const title = document.getElementById('taskInput').value;
     const priority = document.getElementById('taskPriority').value;
-    const dueDate = document.getElementById('taskDeadline').value;
+    const category = document.getElementById('taskCategory').value;
+    const dueDateInput = document.getElementById('taskDeadline').value;
 
     if (!title) return alert("Wpisz treść zadania!");
 
-    const taskData = { title, priority, dueDate };
-    const token = localStorage.getItem('token');
+    // ✅ Znak zapytania '?' sprawi, że jeśli przycisk nie istnieje, JS nie przerwie działania!
+    addBtn?.classList.add('btn-pulse', 'btn-secondary');
 
-    // Jeśli editId istnieje -> PATCH (aktualizacja), jeśli nie -> POST (nowe)
+    const taskData = { title, priority, category };
+    taskData.dueDate = dueDateInput === "" ? null : dueDateInput;
+
     const url = editId ? `/tasks/${editId}` : '/tasks';
     const method = editId ? 'PATCH' : 'POST';
 
@@ -358,35 +441,41 @@ async function handleTaskSubmit() {
             method: method,
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
             body: JSON.stringify(taskData)
         });
 
         if (res.ok) {
-            cancelEdit(); // Czyści formularz
-            fetchTasks(); // Odświeża listę i pasek postępu
+            cancelEdit();
+            fetchTasks();
+        } else {
+            const errorData = await res.json();
+            alert("Błąd zapisu: " + (errorData.message || "Błędne dane."));
         }
     } catch (err) {
-        console.error("Błąd wysyłania:", err);
+        console.error("Błąd połączenia:", err);
+        alert("Błąd połączenia z serwerem.");
+    } finally {
+        // ✅ Tutaj również dajemy znak zapytania '?' dla bezpieczeństwa
+        addBtn?.classList.remove('btn-pulse', 'btn-secondary');
     }
 }
 
 // 2. FUNKCJA ŁADUJĄCA DANE DO EDYCJI
-function editTask(id, title, dueDate, priority) {
-    // Wypełniamy pola danymi
+// Dopisujemy "category" jako piąty parametr funkcji
+function editTask(id, title, dueDate, priority, category) {
     document.getElementById('editTaskId').value = id;
     document.getElementById('taskInput').value = title;
     document.getElementById('taskPriority').value = priority;
+    document.getElementById('taskCategory').value = category || "ogólne"; // <-- NOWE: Ustawiamy kategorię
     
     if (dueDate && dueDate !== 'null') {
-        // Formatowanie daty dla inputa datetime-local
         const d = new Date(dueDate);
         const formattedDate = d.toISOString().slice(0, 16);
         document.getElementById('taskDeadline').value = formattedDate;
     }
 
-    // Zmiana UI
     const btn = document.getElementById('submitTaskBtn');
     btn.innerText = "Zapisz zmiany";
     btn.classList.replace('btn-primary', 'btn-warning');
@@ -397,17 +486,28 @@ function editTask(id, title, dueDate, priority) {
 
 // 3. FUNKCJA ANULUJĄCA EDYCJĘ
 function cancelEdit() {
-    document.getElementById('editTaskId').value = "";
-    document.getElementById('taskInput').value = "";
-    document.getElementById('taskDeadline').value = "";
-    document.getElementById('taskPriority').value = "low";
-    
-    const btn = document.getElementById('submitTaskBtn');
-    btn.innerText = "Dodaj";
-    btn.classList.replace('btn-warning', 'btn-primary');
-    document.getElementById('cancelEditBtn').classList.add('d-none');
-}
+    // 1. Czyszczenie pól (zabezpieczone przed null za pomocą if)
+    const editIdField = document.getElementById('editTaskId');
+    const inputField = document.getElementById('taskInput');
+    const deadlineField = document.getElementById('taskDeadline');
+    const priorityField = document.getElementById('taskPriority');
+    const categoryField = document.getElementById('taskCategory');
 
+    if (editIdField) editIdField.value = '';
+    if (inputField) inputField.value = '';
+    if (deadlineField) deadlineField.value = '';
+    if (priorityField) priorityField.value = 'low';
+    if (categoryField) categoryField.value = 'ogólne';
+
+    // 2. Przywrócenie tekstu głównego przycisku
+    const submitBtn = document.getElementById('submitTaskBtn');
+    if (submitBtn) {
+        submitBtn.innerText = 'Dodaj';
+    }
+
+    // 3. 🛡️ PANCERNE ZABEZPIECZENIE (Dodaj ?. przed classList)
+    document.getElementById('cancelEditBtn')?.classList.add('d-none');
+}
     async function deleteTask(id) {
         const token = localStorage.getItem('token');
         await fetch(`/tasks/${id}`, { 
@@ -425,14 +525,13 @@ tasks.forEach(task => {
     let warningClass = '';
     let dateHtml = '';
 
-    // 1. Logika przetwarzania daty
+    // 1. Twoja Logika przetwarzania daty (zostaje bez zmian)
     if (task.dueDate) {
         const deadline = new Date(task.dueDate);
         const now = new Date();
         const diffMs = deadline - now;
         const diffHours = diffMs / (1000 * 60 * 60);
 
-        // Formatowanie daty na polski format: DD.MM.RRRR, GG:MM
         const formattedDate = deadline.toLocaleString('pl-PL', {
             day: '2-digit', 
             month: '2-digit', 
@@ -441,42 +540,49 @@ tasks.forEach(task => {
             minute: '2-digit'
         });
 
-        // Tworzymy napis z ikonką zegara
-        dateHtml = `<div class="mt-1"><small class="text-muted"><i class="far fa-clock"></i> Termin: ${formattedDate}</small></div>`;
+        dateHtml = `<span class="text-muted ms-2" style="font-size: 0.85rem;"><i class="far fa-clock"></i> ${formattedDate}</span>`;
 
-        // 2. Logika ostrzeżeń wizualnych
         if (!task.completed) {
             if (diffMs < 0) {
-                // Zadanie po terminie - czerwone tło
-                warningClass = 'bg-danger-subtle border-danger opacity-75';
+                warningClass = 'bg-danger-subtle opacity-75';
             } else if (diffHours <= 2) {
-                // Mniej niż 2h - pilne (pulsowanie)
                 warningClass = 'animate__animated animate__pulse animate__infinite border-danger shadow-sm';
             }
         }
     }
 
-    // 3. Kolor paska bocznego (priorytet)
+    // 2. Kolor paska bocznego (priorytet)
     let priorityColor = 'border-info';
     if (task.priority === 'high') priorityColor = 'border-danger';
     else if (task.priority === 'medium') priorityColor = 'border-warning';
 
-    // Łączymy wszystkie klasy w jedną
-    li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border-start border-5 ${priorityColor} ${warningClass}`;
+    // Łączymy klasy (dodajemy border bg-white rounded p-3)
+    li.className = `list-group-item d-flex justify-content-between align-items-center mb-2 shadow-sm border bg-white rounded p-3 border-start border-5 ${priorityColor} ${warningClass}`;
 
-    // 4. Budowanie struktury kafelka
+    // 3. Budowanie NOWEJ struktury kafelka (Wszystko w jednej osi!)
     li.innerHTML = `
-        <div style="flex-grow: 1;">
+        <div class="d-flex align-items-center" style="min-width: 0; flex: 1;">
             <span class="${task.completed ? 'text-decoration-line-through text-muted' : 'fw-bold'}" 
-                  style="cursor:pointer" onclick="toggleTask('${task._id}')">
+                  style="cursor:pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; display: block;" 
+                  onclick="toggleTask('${task._id}')">
                 ${task.title}
             </span>
             ${dateHtml} </div>
-        <div class="d-flex align-items-center">
-            <span class="badge rounded-pill bg-primary me-3 text-uppercase" style="font-size: 0.7rem;">
+
+        <div class="d-flex align-items-center gap-3 flex-shrink-0">
+            
+            ${typeof getCategoryBadge === 'function' ? getCategoryBadge(task.category) : `<span class="badge bg-secondary">${task.category || 'ogólne'}</span>`}
+
+            <span class="badge bg-light text-dark border text-uppercase" style="font-size: 0.75rem;">
                 ${task.priority}
             </span>
-            <i class="fas fa-trash text-danger" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
+
+            <div class="vr mx-1"></div>
+
+            <i class="fas fa-edit text-primary fs-5" style="cursor:pointer" 
+               onclick="editTask('${task._id}', '${task.title.replace(/'/g, "\\'")}', '${task.dueDate || ''}', '${task.priority}', '${task.category || 'ogólne'}')"></i>
+
+            <i class="fas fa-trash text-danger fs-5" style="cursor:pointer" onclick="deleteTask('${task._id}')"></i>
         </div>
     `;
     list.appendChild(li);
@@ -490,12 +596,12 @@ taskInput.addEventListener('input', () => {
     
     if (value === "") {
         // Gdy puste: pulsuje i jest szary
-        addBtn.classList.add('btn-pulse', 'btn-secondary');
-        addBtn.classList.remove('btn-success');
+        addBtn?.classList.add('btn-pulse', 'btn-secondary');
+        addBtn?.classList.remove('btn-success');
     } else {
         // Gdy coś wpisano: przestaje pulsować i robi się zielony
-        addBtn.classList.remove('btn-pulse', 'btn-secondary');
-        addBtn.classList.add('btn-success');
+        addBtn?.classList.remove('btn-pulse', 'btn-secondary');
+        addBtn?.classList.add('btn-success');
     }
 });
 
@@ -663,10 +769,13 @@ function showNotification(task) {
 }
 
 setInterval(() => {
-    if (localStorage.getItem('token')) {
-        fetchTasks(); // Przeglądarka co minutę odświeży listę i sprawdzi powiadomienia
-    }
-}, 60000);
+        if (localStorage.getItem('token')) {
+            // Przeglądarka ma localStorage, więc błąd nie wyskoczy!
+            if (typeof fetchTasks === 'function') {
+                fetchTasks(); 
+            }
+        }
+    }, 60000); // Odświeżaj co 60 sekund
 
 </script>
 </body>

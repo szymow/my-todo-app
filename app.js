@@ -35,7 +35,8 @@ mongoose.connect(DB_URL)
     .catch(err => console.error("Błąd połączenia:", err));
 
 
-// Ta linia sprawia, że pliki z folderu 'public' są widoczne w przeglądarce
+// Ta linia sprawia, że pliki z folderu 'public
+// ' są widoczne w przeglądarce
 app.use(express.static('public'));
 
 // 3. Endpointy API
@@ -86,22 +87,30 @@ app.get('/tasks', auth, async (req, res) => {
 
 // Dodaj nowe zadanie
 // 1. Upewnij się, że masz tu 'auth' jako drugi parametr!
+// W app.js (Backend)
 app.post('/tasks', auth, async (req, res) => {
     try {
-        console.log("Serwer otrzymał:", req.body); // Sprawdź to w terminalu!
+        const { title, priority, category, dueDate } = req.body;
+
+        // Walidacja tytułu na poziomie serwera
+        if (!title) {
+            return res.status(400).send({ error: "Tytuł zadania jest wymagany!" });
+        }
 
         const task = new Task({
-            title: req.body.title,
-            priority: req.body.priority || 'low',
-            dueDate: req.body.dueDate || null, // PRZYPISANIE DATY
-            owner: req.user._id
+            title,
+            priority: priority || 'low',
+            category: category || 'ogólne',
+            dueDate: dueDate === "" ? null : dueDate, // Zamiana pustej daty "" na null
+            owner: req.user._id // Przypisanie do zalogowanego użytkownika
         });
 
         await task.save();
-        res.status(201).send(task); 
-    } catch (err) {
-        console.error("Błąd zapisu:", err);
-        res.status(400).send(err);
+        res.status(201).send(task);
+
+    } catch (e) {
+        console.error("❌ BŁĄD MONGOOSE PODCZAS DODAWANIA ZADANIA:", e); // <-- Zobacz to w terminalu Node.js!
+        res.status(400).send({ message: e.message, details: e });
     }
 });
 
@@ -133,27 +142,35 @@ mongoose.connect(DB_URL)
   });
 
 // Aktualizacja zadania (np. zmiana statusu na wykonane)
+// Upewnij się, że masz tutaj "auth" (lub middleware o nazwie, którą u siebie stosujesz do logowania)
 app.patch('/tasks/:id', auth, async (req, res) => {
-    const updates = Object.keys(req.body);
-    const allowedUpdates = ['title', 'dueDate', 'priority', 'completed'];
-    const isValidOperation = updates.every((update) => allowedUpdates.includes(update));
-
-    if (!isValidOperation) {
-        return res.status(400).send({ error: 'Nieprawidłowe pola do aktualizacji!' });
-    }
-
     try {
+        // req.user istnieje TYLKO WTEDY, gdy przed tą funkcją odpali się "auth"
         const task = await Task.findOne({ _id: req.params.id, owner: req.user._id });
 
         if (!task) {
-            return res.status(404).send();
+            return res.status(404).send({ error: "Nie znaleziono zadania." });
         }
 
-        updates.forEach((update) => task[update] = req.body[update]);
+        const { title, priority, category, dueDate, completed } = req.body;
+
+        if (title !== undefined) task.title = title;
+        if (priority !== undefined) task.priority = priority;
+        if (category !== undefined) task.category = category;
+        if (completed !== undefined) task.completed = completed;
+
+        if (dueDate === "" || dueDate === null) {
+            task.dueDate = null;
+        } else if (dueDate !== undefined) {
+            task.dueDate = dueDate;
+        }
+
         await task.save();
         res.send(task);
+
     } catch (e) {
-        res.status(400).send(e);
+        console.error("Błąd edycji zadania:", e);
+        res.status(400).send({ message: e.message });
     }
 });
 
@@ -199,19 +216,17 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // Aktualizacja modelu Zadania (dodajemy pole owner)
-const TaskSchema = new mongoose.Schema({
-    title: { type: String, required: true },
+const taskSchema = new mongoose.Schema({
+    title: { type: String, required: true, trim: true },
     completed: { type: Boolean, default: false },
     priority: { type: String, default: 'low' },
-    dueDate: { type: Date }, // To już mamy
-    owner: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'User', 
-        required: true 
-    }
-});
+    dueDate: { type: Date },
+    // --- NOWE POLE ---
+    category: { type: String, default: 'ogólne' }, 
+    owner: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' }
+}, { timestamps: true });
 
-const Task = mongoose.model('Task', TaskSchema);
+const Task = mongoose.model('Task', taskSchema);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-tajny-klucz';
 
@@ -253,10 +268,3 @@ app.post('/auth/login', async (req, res) => {
         res.status(500).json({ message: 'Błąd serwera', error: err.message });
     }
 });
-
-// Dodaj to na samym dole pliku JS
-setInterval(() => {
-    if (localStorage.getItem('token')) {
-        fetchTasks(); 
-    }
-}, 60000); // Sprawdzaj co 60 sekund
